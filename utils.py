@@ -3,9 +3,10 @@ import streamlit as st
 import joblib
 import pandas as pd
 import json
+import xgboost as xgb
 
 # =Setting: 모델과 변수 파일명
-MODEL_PATH = "lgbm_franchise_model.pkl"
+MODEL_PATH = "프랜차이즈_xgboost_model.json""
 FEATURES_PATH = "model_features.json"
 
 @st.cache_resource

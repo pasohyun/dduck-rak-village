@@ -128,6 +128,7 @@ if st.session_state['consent_given']:
                     
                     # 조회된 데이터를 세션에 저장 (결과 페이지에서 사용)
                     st.session_state['store_data'] = found_data_sorted
+                    st.session_state['franchise_id'] = id_to_find
                     
                     # 다음 단계 안내
                     st.markdown("---")
