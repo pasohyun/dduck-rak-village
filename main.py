@@ -3,17 +3,27 @@
 import streamlit as st
 import pandas as pd
 import warnings
+from PIL import Image
 
 warnings.filterwarnings('ignore')
 
 # --- 페이지 기본 설정 ---
-st.set_page_config(
-    page_title="소상공인 리스크 분석 대시보드",
-    page_icon="🏪",
-    layout="wide"
-)
+try:
+    icon = Image.open("새싹.png") # 👈 아이콘으로 사용할 png 파일 경로
+except FileNotFoundError:
+    icon = "🏪" # 파일을 못 찾을 경우 기본 이모티콘 사용
 
-st.title("🏪 소상공인 리스크 분석 대시보드")
+# --- 화면을 2개의 열로 분할 ---
+col1, col2 = st.columns([1, 6]) # [이미지 너비 비율, 제목 너비 비율]
+
+with col1:
+    # 첫 번째 열에 이미지 표시
+    st.image("새싹.png", width=80)
+
+with col2:
+    # 두 번째 열에 제목 표시 (이모티콘 제거)
+    st.title("소상공인 리스크 분석 대시보드")
+
 st.markdown("---")
 
 # --- 1. 개인정보 수집 이용 동의 ---
@@ -129,10 +139,11 @@ if st.session_state['consent_given']:
                     # 조회된 데이터를 세션에 저장 (결과 페이지에서 사용)
                     st.session_state['store_data'] = found_data_sorted
                     st.session_state['franchise_id'] = id_to_find
+                    st.session_state['biz_type'] = biz_type
                     
                     # 다음 단계 안내
                     st.markdown("---")
-                    st.markdown("### 👈 이제 왼쪽 사이드바에서 **'2. 분석 결과 보기'** 페이지로 이동하세요.")
+                    st.markdown("### 👈 이제 왼쪽 사이드바에서 **'result page'** 페이지로 이동하세요.")
             
     # 조회가 이미 성공한 상태에서 메인 페이지에 다시 접속한 경우
     elif 'store_data' in st.session_state:
