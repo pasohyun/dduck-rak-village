@@ -1,14 +1,20 @@
 # requirements.txt
 
-# --- 뼈대 ---
+# requirements.txt (최종 완성본)
+
+# --- 뼈대 및 시각화 ---
 streamlit
 pandas
 matplotlib
+seaborn
+Pillow
 
 # --- 머신러닝 모델 ---
+# scikit-learn은 앙상블 모델의 기본 구성 요소입니다.
 scikit-learn
 joblib
 xgboost
+catboost
 
 # --- LLM & RAG ---
 langchain

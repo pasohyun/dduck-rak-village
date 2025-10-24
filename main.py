@@ -147,7 +147,7 @@ if st.session_state['consent_given']:
             
     # 조회가 이미 성공한 상태에서 메인 페이지에 다시 접속한 경우
     elif 'store_data' in st.session_state:
-        st.info("이미 상점 정보 조회가 완료되었습니다. '2. 분석 결과 보기' 페이지로 이동하세요.")
+        st.info("이미 상점 정보 조회가 완료되었습니다. 'result page' 페이지로 이동하세요.")
         with st.expander("조회된 데이터 다시 보기"):
             st.dataframe(st.session_state['store_data'])
 
