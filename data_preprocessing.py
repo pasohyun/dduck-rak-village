@@ -12,9 +12,9 @@ print("[Step 1/4] 데이터 로드를 시작합니다...")
 
 # --- 1. 데이터 로드 (data/ 폴더 경로 적용) ---
 try:
-    df1 = pd.read_csv('big_data_set1_f.csv', encoding='cp949')
-    df2 = pd.read_csv('big_data_set2_f.csv', encoding='cp949')
-    df3 = pd.read_csv('big_data_set3_f.csv', encoding='cp949')
+    df1 = pd.read_csv('data/big_data_set1_f.csv', encoding='cp949')
+    df2 = pd.read_csv('data/big_data_set2_f.csv', encoding='cp949')
+    df3 = pd.read_csv('data/big_data_set3_f.csv', encoding='cp949')
 except FileNotFoundError:
     print("[오류] 'data/' 폴더에서 원본 CSV 파일을 찾을 수 없습니다.")
     print("big_data_set1_f.csv, big_data_set2_f.csv, big_data_set3_f.csv 파일을 data/ 폴더에 넣어주세요.")
@@ -60,7 +60,6 @@ df = master_df_filtered
 drop_cols = [
     'MCT_SIGUNGU_NM', 'HPSN_MCT_BZN_CD_NM', 'ARE_D',
     'APV_CE_RAT', 'M12_SME_BZN_SAA_PCE_RT', 'M12_SME_BZN_ME_MCT_RAT',
-    'M12_SME_RY_ME_MCT_RAT'
 ]
 df = df.drop(columns=drop_cols, errors='ignore')
 
@@ -152,7 +151,7 @@ df_out = df.merge(classification_numeric, on='ENCODED_MCT', how='left')
 
 # ===== 11) 주소(ADDR_DONG) 매핑 =====
 try:
-    with open('address_mapping.json', 'r', encoding='utf-8') as f:
+    with open('data/address_mapping.json', 'r', encoding='utf-8') as f:
         seongdong_mapping_auto = json.load(f)
 except FileNotFoundError:
     print("[오류] 'data/address_mapping.json' 파일을 찾을 수 없습니다.")
@@ -209,15 +208,32 @@ df['M12_MAL_5060_RAT'] = df['M12_MAL_50_RAT'] + df['M12_MAL_60_RAT']
 df['M12_FME_3040_RAT'] = df['M12_FME_30_RAT'] + df['M12_FME_40_RAT']
 df['M12_FME_5060_RAT'] = df['M12_FME_50_RAT'] + df['M12_FME_60_RAT']
 
-# (참고) 원본 컬럼 삭제는 모델링 스크립트(train_model.py)에서 exclude_cols로 처리하는 것이 더 안전합니다.
-# 여기서 미리 삭제하지 않아도 됩니다.
+cols_to_drop = [
+    "M12_MAL_30_RAT", "M12_MAL_40_RAT", "M12_MAL_50_RAT", "M12_MAL_60_RAT",
+    "M12_FME_30_RAT", "M12_FME_40_RAT", "M12_FME_50_RAT", "M12_FME_60_RAT"
+]
+
+df = df.drop(columns=[c for c in df.columns if any(key in c for key in cols_to_drop)])
+
+# 생활권 컬럼 생성
+life_area_classification = {
+    "왕십리권": ["왕십리도선동", "왕십리제2동", "행당제1동", "행당제2동", "하왕십리동"],
+    "성수권": ["성수1가제1동", "성수1가제2동", "성수2가제1동", "성수2가제3동", "송정동"],
+    "금호옥수권": ["금호1가동", "금호2.3가동", "금호4가동", "옥수동", "응봉동"],
+    "마장용답권": ["마장동", "용답동", "사근동"]
+}
+mapping = {}
+for zone, dongs in life_area_classification.items():
+    for dong in dongs:
+        mapping[dong] = zone
+df['LIFE_AREA'] = df['ADDR_DONG'].replace(mapping)
 
 # ===== 14) 시계열 변화량 생성 =====
 score_vars = [
     'RC_M1_UE_CUS_CN', 'RC_M1_AV_NP_AT', 'RC_M1_TO_UE_CT', 'RC_M1_SAA', 'MCT_OPE_MS_CN',
 ]
 ratio_vars_data2 = [
-    'DLV_SAA_RAT', 'M1_SME_RY_SAA_RAT', 'M1_SME_RY_CNT_RAT', 'M12_SME_RY_SAA_PCE_RT',
+    'DLV_SAA_RAT', 'M1_SME_RY_SAA_RAT', 'M1_SME_RY_CNT_RAT', 'M12_SME_RY_SAA_PCE_RT', 'M12_SME_RY_ME_MCT_RAT'
 ]
 customer_vars = [
     'M12_MAL_1020_RAT', 'M12_MAL_3040_RAT', 'M12_MAL_5060_RAT',
@@ -247,20 +263,113 @@ for var in all_vars:
     if var in df.columns:
         df = create_time_series_features(df, var)
 
+
+# ===== 15) is_crash_final 생성 =====
+print("is_crash_final 생성 중입니다")
+
+df.sort_values(["ENCODED_MCT","TA_YM"], inplace=True)
+
+num_cols = [
+    "RC_M1_UE_CUS_CN","RC_M1_AV_NP_AT","APV_CE_RAT","DLV_SAA_RAT",
+    "M1_SME_RY_SAA_RAT","M1_SME_RY_CNT_RAT",
+    "M12_SME_RY_SAA_PCE_RT","M12_SME_BZN_SAA_PCE_RT",
+    "M12_SME_RY_ME_MCT_RAT","M12_SME_BZN_ME_MCT_RAT"
+]
+for c in num_cols:
+    if c in df.columns: df[c] = pd.to_numeric(df[c], errors="coerce")
+
+# 프록시(추정 매출/건수)
+df["EST_M1_SALES"] = df.get("RC_M1_AV_NP_AT", np.nan) * df.get("RC_M1_UE_CUS_CN", np.nan)
+df["EST_M1_CNT"]   = df.get("RC_M1_UE_CUS_CN", np.nan)
+
+# 2) 급락 탐지 파라미터
+PCT_DROP_THR = -30.0  # 전월 대비/MA 대비 -30% 이하
+Z_THR        = -1.5   # rolling Z-score 임계
+WIN          = 3      # rolling 윈도우(월)
+
+targets = [c for c in [
+    "M1_SME_RY_SAA_RAT",      # 업계평균 대비 매출 비율
+    "M1_SME_RY_CNT_RAT",      # 업계평균 대비 건수 비율
+    "M12_SME_RY_SAA_PCE_RT",  # 12M 기준 점포 매출 비중
+    "M12_SME_BZN_SAA_PCE_RT", # 12M 기준 업종 매출 비중
+    "EST_M1_SALES",           # 프록시 매출
+    "EST_M1_CNT"              # 프록시 건수
+] if c in df.columns]
+
+g = df.groupby("ENCODED_MCT", sort=False)
+
+# (1) 전월 대비 증감률(%)
+for col in targets:
+    df[f"{col}_pct_chg"] = g[col].pct_change() * 100
+
+# (2) 이동 평균/표준편차 (vectorized)
+for col in targets:
+    ma  = g[col].rolling(WIN, min_periods=2).mean()
+    std = g[col].rolling(WIN, min_periods=2).std()
+    df[f"{col}_ma"]  = ma.reset_index(level=0, drop=True)
+    df[f"{col}_std"] = std.reset_index(level=0, drop=True)
+    # MA 대비 (%), Z-score
+    df[f"{col}_vs_ma_pct"] = (df[col] / df[f"{col}_ma"] - 1.0) * 100
+    df[f"{col}_z"] = (df[col] - df[f"{col}_ma"]) / df[f"{col}_std"].replace(0, np.nan)
+
+# (3) 급락 플래그(전월 변화 or MA 대비 or Z-score)
+for col in targets:
+    df[f"is_crash_{col}"] = (
+        (df[f"{col}_pct_chg"]   <= PCT_DROP_THR) |
+        (df[f"{col}_vs_ma_pct"] <= PCT_DROP_THR) |
+        (df[f"{col}_z"]         <= Z_THR)
+    ).astype(int)
+
+# (4) 종합 급락 라벨(다수결 1표 이상)
+vote_cols = [c for c in [
+    "is_crash_M1_SME_RY_SAA_RAT",
+    "is_crash_M1_SME_RY_CNT_RAT",
+    "is_crash_EST_M1_SALES"
+] if c in df.columns]
+df["is_crash_final"] = (df[vote_cols].sum(axis=1) >= 1).astype(int) if vote_cols else 0
+
+df = df.drop(
+    columns=[c for c in df.columns 
+             if (
+                 any(x in c for x in [
+                     "_pct_chg", "_ma", "_std", "_vs_ma_pct", "_z", "is_crash_", 
+                     "EST_M1_SALES", "EST_M1_CNT"
+                 ]) 
+                 and c != "is_crash_final"
+             )],
+    errors='ignore'
+)
+
+# is_risk_final 생성
+df["is_risk_final"] = (
+    (df["is_crash_final"].astype(int) == 1) |
+    (df["is_closed"].astype(int) == 1)
+).astype(int)
+df["y_next"] = df.groupby("ENCODED_MCT")["is_risk_final"].shift(-1)
+df = df.dropna(subset=['y_next'])
+df['y_next'] = df['y_next'].astype(int)
+
+df.drop(columns=['is_risk_final','ADDR_STREET', 'ADDR_BUILDING', 'ADDR_DONG', "MCT_ME_D", "is_crash_final", "is_closed"], inplace=True)
+
+
+
 print("[Step 4/4] 최종 파일을 저장합니다...")
 
 # ===== 15) 프랜차이즈 / 개인영업 분리 저장 =====
 # MCT_BRD_NUM (프랜차이즈 번호)의 유무로 분리
 df_not_null = df[df['MCT_BRD_NUM'].notnull()]
+df_not_null = df_not_null.drop(columns=['MCT_BRD_NUM'], errors='ignore')
 df_null = df[df['MCT_BRD_NUM'].isnull()]
 df_null = df_null.drop(columns=['MCT_BRD_NUM'], errors='ignore')
+
+
 
 # 최종 결과물은 메인 폴더에 저장
 output_path_not_null = "프랜차이즈.csv"
 output_path_null = "개인영업.csv"
 
-df_not_null.to_csv(output_path_not_null, index=False)
-df_null.to_csv(output_path_null, index=False)
+df_not_null.reset_index(drop=True).to_csv(output_path_not_null, index=False, encoding='cp949')
+df_null.reset_index(drop=True).to_csv(output_path_null, index=False, encoding='cp949')
 
 print("="*50)
 print(f"전처리 완료: '{output_path_not_null}' ({len(df_not_null)} 행)")
